@@ -132,10 +132,9 @@ class MSS(MSSBase):
         """ GNU/Linux initialisations. """
 
         if not display:
-            try:
-                display = os.environ['DISPLAY'].encode('utf-8')
-            except KeyError:
+            if 'DISPLAY' not in os.environ:
                 raise ScreenShotError('$DISPLAY not set.', locals())
+            display = os.environ['DISPLAY'].encode('utf-8')
 
         if not isinstance(display, bytes):
             display = display.encode('utf-8')
@@ -288,6 +287,9 @@ class MSS(MSSBase):
                 'height': monitor[3] - monitor[1],
             }
 
+        if self._validate_monitor(monitor) is False:
+            raise ScreenShotError("monitor specified out of bounds")
+
         ximage = self.xlib.XGetImage(self.display, self.drawable,
                                      monitor['left'], monitor['top'],
                                      monitor['width'], monitor['height'],
@@ -308,3 +310,24 @@ class MSS(MSSBase):
         self.xlib.XDestroyImage(ximage)
 
         return self.cls_image(data, monitor)
+
+    def _validate_monitor(self, monitor):
+        # type: (Dict[str, int]) -> bool
+        """Check if monitor coords are valid for connected monitors"""
+        if monitor in self.monitors:  # Predefined monitors always valid
+            return True
+        l, t = monitor["left"], monitor["top"]
+        w, h = monitor["width"], monitor["height"]
+        corners = ((l, t), (l, t + h), (l + w, t), (l + w, t + h))
+        return all(self._assert_coord_in_monitors(*c) for c in corners)
+
+    def _assert_coord_in_monitors(self, x, y):
+        # type: (int, int) -> bool
+        """Check if given coordinate is within a monitor"""
+        for m in self.monitors:
+            l, t, w, h = m["left"], m["top"], m["width"], m["height"]
+            x1, x2, y1, y2 = l, l + w, t, t + h
+            valid = x1 <= x <= x2 and y1 <= y <= y2
+            if valid is True:
+                return True
+        return False
